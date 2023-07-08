@@ -1,39 +1,33 @@
-import json, requests, re 
-import os, time, shutil
+import json
+import requests
+import re
+import os
+import time
+import shutil
+import urllib3
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+proxies = {
+    # 'http': 'http://127.0.0.1:8888',
+    # 'https': 'http://127.0.0.1:8888'
+}
 
 # 진입점
+
+
 def Get_File_List(Essential_Information: dict):
+
+    # 자료를 담는 클래스 선언 및 z값 세팅
     Box_Explorer_Class = All_File_List(Essential_Information)
 
-    
+    # 라이브 메타데이터 가져오기
+    Box_Explorer_Class.get_file_list()
+
+    # 휴지통 메타데이터 가져오기
+    Box_Explorer_Class.RB_get_file_list()
 
     return Box_Explorer_Class
-
-
-
-class All_File_List:
-    def __init__(self, Essential_Information):
-
-        # 쿠키 및 토큰 값 초기 세팅
-        self.z = Essential_Information['z']
-        self.request_token = Essential_Information['request_token']
-
-        # 파일 리스트 정보를 담을 리스트 선언
-        self.Global_file_index = 0
-        self.Global_file_list = []
-
-        # 폴더 생성
-        self.initDirPath = ".\Box"
-        if not os.path.exists(self.initDirPath):
-            os.makedirs(self.initDirPath)
-
-        for category in [".downloads", ".thumbnail"]:
-            subPATH = os.path.join(self.initDirPath, category)
-            if not os.path.exists(subPATH):
-                os.makedirs(subPATH)
-            else:
-                shutil.rmtree(subPATH); os.makedirs(subPATH)
-
 
 
 class Jsondata:
@@ -41,6 +35,15 @@ class Jsondata:
         self.itemcount = 0
         self.lencount = 0
         self.jsondata = {}
+
+
+class RB_Jsondata:
+
+    def __init__(self):
+        self.pageCount = 0
+        self.pageNumber = 0
+        self.jsondata = {}
+
 
 class Meta_data:
     def __init__(self):
@@ -70,326 +73,460 @@ class Meta_data:
         self.thumbnail = ""
         self.note_flag = 0
 
-class FileList:
+
+class RB_Meta_data:
+    def __init__(self):
+        self.count = 0
+        self.is_trashed = "Yes"
+        self.typedID = ""
+        self.type = ""
+        self.id = ""
+        self.description = ""
+        self.date = ""
+        self.extension = ""
+        self.name = ""
+        self.itemSize = ""
+        self.parentFolderID = ""
+        self.created = ""
+        self.contentUpdated = ""
+        self.deleted = ""
+        self.filesCount = ""
+        self.isExternallyOwned = ""
+        self.deletedBy = ""
+        self.deletedFromTrash = ""
+        self.lastUpdatedByName = ""
+        self.isSelfOrAncestorCollaborated = ""
+        self.versionCount = ""
+        self.ownerName = ""
+        self.ownerEnterpriseName = ""
+        self.ownerEnterpriseID = ""
+        self.contentCreated = ""
+        self.isBox3DPackageSupported = ""
+        self.durl = ""
+
+        self.iconType = ""
+        self.isRetained = ""
+        self.isRetainedUntil = ""
+        self.isRetainedByPolicyType = ""
+        self.canDelete = ""
+        self.canRestore = ""
+
+
+class All_File_List:
     def __init__(self, Essential_Information):
-        self.z = Essential_Information['z']
-        self.request_token = Essential_Information['request_token']
-        self.global_file_index = 0
 
+        # 쿠키 값 세팅
+        self.z = {'z': Essential_Information['z']}
+        self.uid = {'uid': Essential_Information['uid']}
 
-    #추출한 정보를 바탕으로 json, 출력list 생성
-    def making_json(self, name,fid,  path, size, is_shared, is_trashed, server_ctime, content_ctime, server_mtime, lastmod_user, version_count, version_num, extension, owner, sha1, sharing_user, sharing_email, durl):
-        tempjson={"num":self.k, "name":str(name), "id":fid, "path":path, "size":size, "extension":extension, "server Created":server_ctime, "conent Created":content_ctime, "is_shared":is_shared, "lastmodified User":lastmod_user, "version_count":version_count,"version_num":version_num, "owner":owner, "sha1":sha1, "sharing_user":sharing_user, "sharing_email":sharing_email, "download url":durl}
-        templist =[name, fid, path, size, extension, server_ctime, lastmod_user, version_count, version_num, owner, sha1]
-        self.printlist.append(templist)
-        self.metadict[self.k]=tempjson
-        self.k+=1
-        self.error_thumb=[]
-        self.error_meta=[]
-        self.error_sidebar=[]
-        self.error_collabo=[]
-    
-    def collabo(self,fid):
-        flag = 5
-        while(flag):
-            try:
-                url = "https://app.box.com/file/"+str(fid)+"/collaborators"
-                res = requests.get(url=url, cookies=self.cookies, verify=False)
-                split_data = "Box.postStreamData = (.+?);"
-                collabo_name = list()
-                collabo_email=list()
-                string = re.search(split_data, str(res.content)).group(1)
-                collabojson = json.loads(string)
-                root = "\\/app-api\\/enduserapp\\/item\\/f_"+str(fid)+"\\/collaborators"
+        # 파일 리스트 정보를 담을 리스트 선언
+        self.Global_file_index = 0
+        self.RB_Global_file_index = 0
+        self.Global_file_list = []
+        self.RB_Global_file_list = []
 
-                for users in range(len(collabojson[root]["collaborators"])):
-                    collabo_name.append(collabojson[root]["collaborators"][users]["name"])
-                    collabo_email.append(collabojson[root]["collaborators"][users]["email"])
-                print("collaborator : "+collabo_email, collabo_name)
-                flag =0
-            except Exception as e:
-                if(flag>1):
-                    flag-=1
-                    # print(e)
-                    print("collabo : request error, retry...")
-                    #shared link는 생성했지만 collaboration기능은 사용하지 않은 경우
-                    collabo_name = ""
-                    collabo_email =""
-                    time.sleep(30)
-                else:
-                    print("collabo 수집에 실패하여 error 리스트에 저장됩니다. fid : {}".format(fid))
-                    self.error_collabo.append(fid)
-            return collabo_name, collabo_email
+        # 폴더 생성
+        self.initDirPath = ".\Box"
+        if not os.path.exists(self.initDirPath):
+            os.makedirs(self.initDirPath)
 
-    #썸네일 수집, 사이드바에서 추출한 썸네일 정보를 이용하여 수집
-    def get_thumbnail(self, fid, fname, thumbnail): 
-        flag = 5
-        while(flag):
-            try:
-                if thumbnail:
-                    thumbnail = "https://app.box.com"+thumbnail.split("thumb_320.jpg")[0]+"thumb_1024.jpg"
-                    res = requests.get(url=thumbnail, cookies=self.cookies, verify=False)
-                    # print(res.content)
-                    with open(".thumbnail/"+str(fid)+".jpg", 'wb') as f:
-                        f.write(res.content)
-                flag=0
-            except:
-                if(flag>1):
-                    flag-=1
-                    print("thumbnail {} : request error, retry...".format(fname))
-                    time.sleep(40)
-                else:
-                    print("썸네일 다운로드에 실패하여 error 리스트에 저장됩니다. fid : {}, fname : {}".format(fid, fname.encode('utf-8').decode('unicode-escape')))
-                    self.error_thumb.append(thumbnail)
-                    flag=0
+        for category in [".downloads", ".thumbnail", ".history"]:
+            subPATH = os.path.join(self.initDirPath, category)
+            if not os.path.exists(subPATH):
+                os.makedirs(subPATH)
+            else:
+                shutil.rmtree(subPATH)
+                os.makedirs(subPATH)
 
-    #get metadata ---(다른 방법으로 메타데이터 수집)
-    def meta(self, fid):
-        flag=5
-        sharedlink=""
-        sha1=""
-        while(flag):
-            try:
-                # url = https://app.box.com/index.php?fileIDs[]=955100044758
-                url = "https://app.box.com/index.php?fileIDs[]="+str(fid)+"&rm=preview_get_files_metadata"
-                res = requests.get(url=url, cookies=self.cookies, verify=False)
-                metajson = res.json()
-                sharedlink = metajson["filesMetadata"][0]["shared_link"]
-                sha1 = metajson["filesMetadata"][0]["sha1"]
-                flag = 0
-            except:
-                if(flag>1):
-                   flag-=1
-                   print("meta : request error, retry...")
-                   time.sleep(30)
-                else:
-                    print("메타데이터 로드(meta)에 실패하여 error 리스트에 저장됩니다. fid : {}".format(fid))
-                    self.error_meta.append(fid)
-            return sharedlink, sha1
+    def get_file_list(self):
+        requestURL = "https://app.box.com/folder/0"
 
-    def sidebar(self, fid): #사이드바에서 메타데이터 수집
-        flag = 5
-        name= f_created= f_contentCreated= f_contentUpdated= owner= extension= comment_count= thumbnail=""
-        itemsize=0
-        version_count=0
-        while(flag):
-            try:
-                url = "https://app.box.com/app-api/enduserapp/file/"+str(fid)+"/sidebar"
-                res=requests.get(url=url, cookies=self.cookies)
-                sidejson = res.json()
-                for i in range(0, len(sidejson["items"])):
-                    name = sidejson["items"][i]["name"]
-                    f_created = sidejson["items"][i]["created"]
-                    f_contentCreated = sidejson["items"][i]["contentCreated"]
-                    f_contentUpdated = sidejson["items"][i]["contentUpdated"]
-                    version_count = sidejson["items"][i]["versionCount"]
-                    itemsize = sidejson["items"][i]["itemSize"]
-                    # uploader = sidejson["items"][i]["uploader"]
-                    owner = sidejson["items"][i]["ownerName"]
-                    extension = sidejson["items"][i]["extension"]
-                    comment_count = sidejson["items"][i]["commentsCount"]
-                    if sidejson["items"][i]["thumbnailURLs"] == "None":
-                        thumbnail = None
-                    else : thumbnail=sidejson["items"][i]["thumbnailURLs"]["large"]
-                    flag=0
-            except Exception as e:
-                if (flag>1):
-                    flag-=1        
-                    print("sidebar : request error, retry...")
-                    time.sleep(30)
-                else:
-                    print("메타데이터 로드(sidebar)에 실패하여 error 리스트에 저장됩니다. fid : {}".format(fid))
-                    self.error_sidebar.append(fid)
-            return name, f_created, f_contentCreated, f_contentUpdated, version_count, itemsize, owner, extension, comment_count, thumbnail
+        responseData = requests.get(
+            url=requestURL, cookies=self.z, proxies=proxies, verify=False)
 
+        # 버전 구하는 용도로 받아둠
+        self.request_token = re.search(
+            ',\"requestToken\":\"(.+?)\",\"billing\":{', responseData.text).group(1)
 
-    def parsing_file_list(self, string, root, r):
-        string2 = "".join(filter(r.search, string))
-        string2 = string2.split("Box.postStreamData = ")
-        folder_list = json.loads(string2[-1])
-        folder_itemcount  = folder_list[root]["folderItemCount"]
-        folder_lencount = len(folder_list[root]["items"])
-        return folder_list, folder_itemcount, folder_lencount
+        Box_Poststream_Data = responseData.text.split(
+            "Box.postStreamData = ")[1]
+        Box_Poststream_Data = Box_Poststream_Data.split(";")[0]
 
-    #파일 리스트를 한번에 다 가져오지 않고 n개씩 가져오므로 (root)
-    def next_page(self, url, root, itemcount, file_list):
-        res = requests.get(url, cookies=self.cookies)
-        split_data = "folderItemCount\":"+str(itemcount)+",\"items\":(.+?),\"pageCount\":"
-        add_string = re.search(split_data,str(res.content)).group(1)
-        add_string = json.loads(add_string)
-        len_addsring = len(add_string)
-        for i in range(0,len_addsring):
-            file_list[root]["items"].append(add_string[i])
-            i+=1
-        return file_list
+        path = "All Files"
+        root = "/app-api/enduserapp/folder/0"
+        file_list = self.parsing_file_list(root, Box_Poststream_Data)
+        folder_list = Jsondata()
 
-    #파일 리스트를 한번에 다 가져오지 않고 n개씩 가져오므로 (folder)
-    def next_page_folder(self, url, root, itemcount, file_list):
-        res = requests.get(url, cookies=self.cookies)
-        split_data = "folderItemCount\":"+str(itemcount)+",\"items\":(.+?),\"nextMarker\":"
-        add_string = re.search(split_data,str(res.content)).group(1)
-        add_string = json.loads(add_string)
-        len_addsring = len(add_string)
-        for i in range(0,len_addsring):
-            file_list[root]["items"].append(add_string[i])
-            i+=1
-        return file_list
+        while file_list.itemcount > file_list.lencount:
+            url = "https://app.box.com/app-api/enduserapp/folder/0?itemOffset=" + \
+                str(file_list.lencount - 1)
+            file_list.jsondata = self.next_page(url, root, file_list)
+            file_list.lencount = len(
+                file_list.jsondata["/app-api/enduserapp/folder/0"]["items"])
 
-    def folder_file_list(self, url, root):
-        try:
-            res = requests.get(url, cookies=self.cookies)
-            r = re.compile("Box.postStreamData")
-            folder_list, folder_itemcount, folder_lencount = self.parsing_file_list(res.text.split(';'), root, r)
-        except:
-            flag = 1
-            while(flag):
-                try:
-                
-                    res = requests.get(url, cookies=self.cookies)
-                    r = re.compile("Box.postStreamData")
-                    folder_list, folder_itemcount, folder_lencount = self.parsing_file_list(res.text.split(';'), root, r)
-                    flag =0
-                    return folder_list, folder_itemcount, folder_lencount
-                except:
-                    print("parsing file list : request error, retry...")
-                    time.sleep(40)
-                    pass
-            
-        return folder_list, folder_itemcount, folder_lencount
+        print("★ Root 총 파일, 폴더 수: " + str(file_list.lencount) + "\n")
 
-    #파일 히스토리 수집의 경우 단계를 거쳐 메타데이터 수집 (토큰수집 / 각 버전에 대한 정보 추출)
-    def get_version1(self, i, _path):
-        fid = i["id"]
-        #1. get tokens
-        url1 = "https://app.box.com/app-api/enduserapp/elements/tokens"
-        data = "{\"fileIDs\":["+str(fid)+"]}"
-        headers ={
-            'X-Request-Token':self.request_token
-        }
-        flag = 5
-        while(flag):
-            try : 
-                response1 = requests.post(url = url1, cookies=self.cookies,  headers=headers, data=data, verify=False)
-                tokenjson = response1.json()
-                #2. 각 버전에 대한 정보 추출
-                root1 = str(fid)
-                token1 = "Bearer "+tokenjson[root1]["read"]
-                stream = "/versions?offset=0&limit=1000&fields=authenticated_download_url,created_at,extension,is_download_available,modified_at,modified_by,name,permissions,restored_at,restored_by,retention,size,trashed_at,trashed_by,uploader_display_name,version_number"
-                url2 = "https://api.box.com/2.0/files/"+str(fid)+stream
-                headers = {
-                    'Authorization': token1
-                }
-                response2 = requests.get(url = url2, cookies=self.cookies, headers=headers, verify=False)
-                vinfojson=response2.json()
-                for vcount in range(len(vinfojson["entries"])):
-                    vfid = vinfojson["entries"][vcount]["id"]
-                    downloadtoken = "1%%21"+tokenjson[root1]["read"][2:]
-                    durl = "https://public.boxcloud.com/api/2.0/files/"+str(fid)+"/content?access_token="+downloadtoken+"&version="+str(vfid)
-                    is_trashed=""
-                    if vinfojson["entries"][vcount]["trashed_at"]:
-                        is_trashed="YES"
-            except:
-                if(flag>1):
-                    print("version request error, retry...({})".format(flag))
-                else:
-                    print("버전 수집에 실패하여 error list에 저장합니다. fid : {}, fname : {}".format(fid, i["name"]))
-                    self.erorr_version.append(fid)
-                
-            return vinfojson["entries"][vcount]["name"], vfid, _path, vinfojson["entries"][vcount]["size"], is_trashed, vinfojson["entries"][vcount]["trashed_at"], vinfojson["entries"][vcount]["created_at"], vinfojson["entries"][vcount]["modified_at"], vinfojson["entries"][vcount]["modified_by"]["login"], vinfojson["entries"][vcount]["version_number"], vinfojson["entries"][vcount]["extension"], vinfojson["entries"][vcount]["uploader_display_name"], durl
+        for element in file_list.jsondata[root]["items"]:
+            if element["type"] == "folder":
+                self.check_type(element, path)
+            else:
+                self.get_metadata(element, path)
 
-    def get_metadata(self, i, _path): #파일의 메타데이터 수집
-        name, f_created, f_contentCreated, f_contentUpdated, version_count, itemsize,  owner, extension, comment_count, thumbnail=self.sidebar(i["id"])
-        lastupdateduser = i["lastUpdatedByName"]
-        path=_path
-        name = name
-        self.get_thumbnail(i["id"], i["name"], thumbnail)
-        sharedlink, sha1 = self.meta(i["id"])
-        is_trashed = None
-        trashed_at=""
-        is_shared=None
-        server_mtime=""
-        collabo_email=""
-        collabo_name=""
-        version_num=1
-        if sharedlink: #공유한 경우, 파일에 액세스 권한이 있는 사람의 이름, 이메일 수집
-            is_shared ="YES"
-            collabo_name, collabo_email = self.collabo(i["id"])
-        noteflag = 0
-        durl = None
-        if i["extension"]=="boxnote": # boxnote의 경우, 다른 방식으로 수집해야하므로 체크
-            noteflag=1
-        if version_count and noteflag==0: #파일 히스토리가 존재할 경우, NOTE는 히스토리를 다른 방식으로 수집해야 하므로 제외 / 파일 버전마다 json append
-            #파일 히스토리의 특정 버전을 다운로드 할 경우, vdurl에 있는 url에서 다운로드해야함
-            vname, vfid, _path, vsize, vis_trashed, vtrashed_at, vf_created,  vserver_mtime, vlastupdateduser, vversion_num, vextension, vowner, vdurl=self.get_version1(i,_path)
-            vsha1=""
-            self.making_json(vname, vfid, _path, vsize, is_shared, vis_trashed, vtrashed_at, vf_created,f_contentCreated, vserver_mtime, vlastupdateduser, vversion_num, vextension, vowner, vsha1, collabo_name, collabo_email, vdurl)
-        #파일마다 json추가
-        self.making_json(name, i["id"], path, itemsize, is_shared, is_trashed, f_created, f_contentCreated, server_mtime, lastupdateduser, version_count, version_num, extension, owner, sha1, collabo_name, collabo_email, durl)
+    def parsing_file_list(self, root, Box_Poststream_Data):
+        element_list = Jsondata()
+        element_list.jsondata = json.loads(Box_Poststream_Data)
+        element_list.itemcount = element_list.jsondata[root]["folderItemCount"]
+        element_list.lencount = len(element_list.jsondata[root]["items"])
 
+        return element_list
 
+    def next_page(self, url, root, element_list):
+        requestURL = url
 
-    def check_type(self, i, path):
-        #check file or folder , if file : get metadata
-        folder_list={}
-        if i["type"]=="folder":
-            url = "https://app.box.com/folder/"+str(i["id"])
-            root = "/app-api/enduserapp/folder/"+str(i["id"])
-            folder_list, folder_itemcount, folder_lencount = self.folder_file_list(url, root)
-            if folder_itemcount>folder_lencount:
-                folder_list = self.next_page_folder(url, root, folder_itemcount, folder_list)
-            path = folder_list[root]["folder"]["path"]
-            s_path = "0\\"
-            for j in range(0,len(path)):
-                s_path +=path[j]['name']+"\\"
-                print(s_path)
+        responseData = requests.get(
+            url=requestURL, cookies=self.z, proxies=proxies, verify=False)
 
-            if not os.path.exists(str(s_path)):
-                os.makedirs(str(s_path))
-            with open(s_path + str(i["id"])+".txt",'w') as f:
-                json.dump(folder_list, f)   
+        new_jsondata = json.loads(responseData.content)
+        len_jsondata = len(new_jsondata["items"])
 
-            for j in folder_list[root]["items"]: 
-                folder_list = self.check_type(j, path)
-            return folder_list
+        jsondata_root_items = element_list.jsondata[root]["items"]
 
-        else : #get metadata
+        for i in range(len_jsondata):
+            jsondata_root_items.append(new_jsondata["items"][i])
+
+        element_list.jsondata[root]["items"] = jsondata_root_items
+
+        return element_list.jsondata
+
+    def check_type(self, i, path):  # i : 각 파일
+        folder_list = Jsondata()
+
+        if i["type"] == "folder":
+            url = "https://app.box.com/folder/" + str(i["id"])
+            root = "/app-api/enduserapp/folder/" + str(i["id"])
+            folder_list = self.folder_file_list(url, root)
+
+            while folder_list.itemcount > folder_list.lencount:
+                url2 = "https://app.box.com/app-api/enduserapp/folder/" + \
+                    str(i["id"]) + "?itemOffset=" + str(folder_list.lencount)
+                folder_list.jsondata = self.next_page(url2, root, folder_list)
+                folder_list.lencount = len(folder_list.jsondata[root]["items"])
+
+            # 서브 폴더 경로는 배열의 합으로 구해진다.
+            subpath = ""
+            for node in folder_list.jsondata[root]["folder"]["path"]:
+                subpath = os.path.join(subpath, node["name"])
+            print(subpath)
+
+            for element in folder_list.jsondata[root]["items"]:
+                self.check_type(element, subpath)
+
+        else:
             self.get_metadata(i, path)
 
+        return folder_list
 
-    #root폴더에 대한 response에서 파일 목록에 대한 정보 추출 후 파일마다 메타데이터 수집하는 함수로 보내기
-    def file_list(self):
-        root = "/app-api/enduserapp/folder/0"
-        r = re.compile("Box.postStreamData")
-        self.jsondata, itemcount, lencount = self.parsing_file_list(self.string, root, r)
-        self.metajson = {}
-        self.metajson['items']=[]
-        while itemcount>lencount:
-            #파일 목록 한번에 추출 x n개씩 가져옴 -->  오프셋을 이용하여 n개씩 추출
-            url = "https://app.box.com/app-api/enduserapp/folder/0?itemOffset="+str(lencount-1)
+    # sidebar, meta, collabo, get_thumbnail
+    def get_metadata(self, i, _path):
+        meta_json = self.sidebar(i["id"])
+        meta_json.path = _path
+        meta_json.lastmod_user = i["lastUpdatedByName"]
+        meta_json.version_num = meta_json.version_count
+        meta_json = self.meta(meta_json.fid, meta_json)
 
-            self.jsondata = self.next_page(url, root, itemcount, self.jsondata)
-            lencount = len(self.jsondata["/app-api/enduserapp/folder/0"]["items"])
-            
-            # print("len count : ", lencount)
-        print("루트 총 파일, 폴더 수 : ", lencount-1)
+        if meta_json.sharedlink != "":
+            meta_json.is_shared = "YES"
+            meta_json = self.collabo(meta_json.fid, meta_json)
+        else:
+            meta_json.collabo_name.append("")
+            meta_json.collabo_email.append("")
 
-        if not os.path.exists("0"):
-            os.makedirs("0")
-        with open("0\\0.txt",'w') as f:
-            json.dump(self.jsondata, f)  
+        self.get_thumbnail(meta_json.fid, meta_json.name,
+                           meta_json.thumbnail)
 
-        if not os.path.exists(".thumbnail"):
-            os.makedirs(".thumbnail")
-        for i in  self.jsondata["/app-api/enduserapp/folder/0"]["items"]:
-            if i["type"]=="folder":
-                folder_list = self.check_type(i, "0")
+        self.Global_file_index += 1
+        meta_json.Count += self.Global_file_index
+
+        if meta_json.extension == "boxnote":
+            meta_json.note_flag = 1
+
+        print("★ Count :", self.Global_file_index,
+              f"(현재 ver {meta_json.version_count} )")
+        self.Global_file_list.append(meta_json)
+
+        # 버전 탐색
+        if meta_json.version_count != 1 and meta_json.note_flag == 0:
+            self.get_version(i, meta_json.path, meta_json.version_count)
+
+        # self.File_WriteLine(meta_json)
+
+    def get_version(self, i, path, version_count):
+
+        requestURL = "https://app.box.com/app-api/enduserapp/elements/tokens"
+
+        header = {
+            "X-Request-Token": self.request_token
+        }
+
+        data = "{\"fileIDs\":[" + str(i["id"]) + "]}"
+
+        temp = ""
+        downloadtoken = ""
+
+        responseData = requests.post(
+            url=requestURL, headers=header, data=data, cookies=self.z, proxies=proxies, verify=False)
+
+        tokenJson = json.loads(responseData.content)
+
+        historyRoot = str(i["id"])
+        historyToken = "Bearer " + tokenJson[historyRoot]["read"]
+        stream = "/versions?offset=0&limit=1000&fields=authenticated_download_url,created_at,extension,is_download_available,modified_at,modified_by,name,permissions,restored_at,restored_by,retention,size,trashed_at,trashed_by,uploader_display_name,version_number"
+        requestURL2 = "https://api.box.com/2.0/files/" + historyRoot + stream
+
+        header2 = {
+            "Authorization": historyToken
+        }
+
+        responseData2 = requests.get(
+            url=requestURL2, headers=header2, cookies=self.z, proxies=proxies, verify=False)
+        vinfojson = json.loads(responseData2.content)
+
+        if vinfojson.get("code") == "forbidden":
+            print("해당 계정의 권한으로 파일(현재 ver" + str(version_count) +
+                  ")의 하위 버전을 탐색할 수 없습니다. status : 403\n")
+            return
+
+        fix_count = self.Global_file_index
+
+        for vcount in range(len(vinfojson["entries"])):
+            vmeta_json = Meta_data()
+
+            vmeta_json.Count += self.Global_file_index
+            vmeta_json.name = vinfojson["entries"][vcount]["name"]
+            vmeta_json.fid = vinfojson["entries"][vcount]["id"]
+            vmeta_json.path = path
+            vmeta_json.size = vinfojson["entries"][vcount]["size"]
+            vmeta_json.trashed_at = vinfojson["entries"][vcount]["trashed_at"]
+            # utc
+            vmeta_json.server_ctime = vinfojson["entries"][vcount]["created_at"]
+            # utc
+            vmeta_json.server_mtime = vinfojson["entries"][vcount]["modified_at"]
+            vmeta_json.lastmod_user = vinfojson["entries"][vcount]["modified_by"]["login"]
+            vmeta_json.version_count = version_count
+            vmeta_json.version_num = vinfojson["entries"][vcount]["version_number"]
+            vmeta_json.extension = vinfojson["entries"][vcount]["extension"]
+            vmeta_json.owner = vinfojson["entries"][vcount]["uploader_display_name"]
+
+            temp = tokenJson[historyRoot]["read"]
+            downloadtoken = "1%21" + temp[2:len(temp)]
+            vmeta_json.durl = "https://public.boxcloud.com/api/2.0/files/" + \
+                str(i["id"]) + "/content?access_token=" + \
+                downloadtoken + "&version=" + str(vmeta_json.fid)
+
+            if vinfojson["entries"][vcount]["trashed_at"] != "":
+                vmeta_json.is_trashed = "YES"
+
+            print("★ Count : " + str(self.Global_file_index) + " (Count " +
+                  str(fix_count) + "의 하위 ver" + str(vmeta_json.version_num) + ")")
+
+            self.Global_file_list.append(vmeta_json)
+
+            # self.File_WriteLine(vmeta_json)
+
+    def folder_file_list(self, url, root):
+        element_list = Jsondata()
+        requestURL = url
+        responseData = requests.get(
+            url=requestURL, cookies=self.z, proxies=proxies, verify=False)
+
+        self.request_token = re.search(
+            ',\"requestToken\":\"(.+?)\",\"billing\":{', responseData.text).group(1)
+
+        Box_Poststream_Data = responseData.text.split(
+            "Box.postStreamData = ")[1]
+
+        Box_Poststream_Data = Box_Poststream_Data.split(";")[0]
+
+        element_list = self.parsing_file_list(root, Box_Poststream_Data)
+
+        return element_list
+
+    def sidebar(self, fid):
+        meta = Meta_data()
+        requestURL = "https://app.box.com/app-api/enduserapp/file/" + \
+            str(fid) + "/sidebar"
+        responseData = requests.get(
+            url=requestURL, cookies=self.z, proxies=proxies, verify=False)
+        sidejson = json.loads(responseData.content)
+
+        for i in range(len(sidejson["items"])):
+            meta.name = sidejson["items"][i]["name"]
+            meta.fid = fid
+            meta.size = sidejson["items"][i]["itemSize"]
+            meta.server_ctime = sidejson["items"][i]["created"]
+            meta.content_ctime = sidejson["items"][i]["contentCreated"]
+            meta.contentUpdated = sidejson["items"][i]["contentUpdated"]
+            meta.version_count = sidejson["items"][i]["versionCount"] + 1
+            meta.owner = sidejson["items"][i]["ownerName"]
+            meta.extension = sidejson["items"][i]["extension"]
+            meta.comment_count = sidejson["items"][i]["commentsCount"]
+
+            if sidejson["items"][i]["thumbnailURLs"] == "None":
+                meta.thumbnail = ""
             else:
-                #get file metadata
-                path="0"
-                self.get_metadata(i, path)
-            print("count : {}".format(self.k))    
-        # print(self.error_thumb)
-        # print(self.error_collabo)
-        # print(self.error_meta)
-        # print(self.error_sidebar)
-        return self.metadict, self.printlist
+                meta.thumbnail = sidejson["items"][i]["thumbnailURLs"]["large"]
+
+        return meta
+
+    def get_thumbnail(self, fid, fname, thumbnail):
+
+        if thumbnail is not None:
+            thumbnailURL = "https://app.box.com" + \
+                thumbnail.split("thumb_320.jpg")[0] + "thumb_1024.jpg"
+
+            responseData = requests.get(
+                url=thumbnailURL, cookies=self.z, proxies=proxies, verify=False)
+            filePATH = os.path.join(
+                self.initDirPath, ".thumbnail", str(fid) + ".jpg")
+
+            f = open(filePATH, 'wb')
+            f.write(responseData.content)
+
+    def meta(self, fid, meta_json):
+        requestURL = "https://app.box.com/index.php?fileIDs[]=" + \
+            str(fid) + "&rm=preview_get_files_metadata"
+
+        responseData = requests.get(
+            url=requestURL, cookies=self.z, proxies=proxies, verify=False)
+        metajson = json.loads(responseData.content)
+        meta_json.sharedlink = metajson["filesMetadata"][0]["shared_link"]
+        meta_json.sha1 = metajson["filesMetadata"][0]["sha1"]
+
+        return meta_json
+
+    def collabo(self, fid, meta_json):
+        requestURL = "https://app.box.com/file/" + str(fid) + "/collaborators"
+
+        responseData = requests.get(
+            url=requestURL, cookies=self.z, proxies=proxies, verify=False)
+
+        Box_Poststream_Data = responseData.text.split(
+            "Box.postStreamData = ")[1]
+        Box_Poststream_Data = Box_Poststream_Data.split(";")[0]
+
+        collaboJson = json.loads(Box_Poststream_Data)
+        root = "/app-api/enduserapp/item/f_" + str(fid) + "/collaborators"
+
+        for users in range(len(collaboJson[root]["collaborators"])):
+            meta_json.collabo_name.append(
+                collaboJson[root]["collaborators"][users]["name"])
+            meta_json.collabo_email.append(
+                collaboJson[root]["collaborators"][users]["email"])
+
+        return meta_json
+
+    # 휴지통 영역
+
+    def RB_get_file_list(self):
+        requestURL = "https://app.box.com/trash"
+        responseData = requests.get(
+            url=requestURL, cookies=self.z, proxies=proxies, verify=False)
+
+        Box_prefetched_Data = responseData.text.split(
+            "Box.prefetchedData = ")[1]
+        Box_prefetched_Data = Box_prefetched_Data.split(';')[0]
+
+        RB_root = "/app-api/enduserapp/trash"
+        RB_file_list = self.RB_parsing_file_list(RB_root, Box_prefetched_Data)
+        RB_file_list.pageNumber += 1
+
+        while RB_file_list.pageNumber <= RB_file_list.pageCount:
+            url = "https://app.box.com/app-api/enduserapp/trash?page=" + \
+                str(RB_file_list.pageNumber)
+            RB_file_list.jsondata = self.RB_next_page(
+                url, RB_root, RB_file_list)
+            RB_file_list.pageNumber += 1
+
+        for element in RB_file_list.jsondata[RB_root]["items"]:
+            self.RB_get_metadata(element)
+
+    def RB_parsing_file_list(self, root, Box_prefetched_Data):
+        element_list = RB_Jsondata()
+        element_list.jsondata = json.loads(Box_prefetched_Data)
+        element_list.pageNumber = element_list.jsondata[root]["pageNumber"]
+        element_list.pageCount = element_list.jsondata[root]["pageCount"]
+        return element_list
+
+    def RB_next_page(self, url, root, element_list):
+        requestURL = url
+        responseData = requests.get(
+            url=requestURL, cookies=self.z, proxies=proxies, verify=False)
+
+        new_jsondata = json.loads(responseData.content)
+        len_jsondata = len(new_jsondata["items"])
+        jsondata_root_items = element_list.jsondata[root]["items"]
+
+        for i in range(len_jsondata):
+            jsondata_root_items.append(new_jsondata["items"][i])
+
+        element_list.jsondata[root]["items"] = jsondata_root_items
+        return element_list.jsondata
+
+    def RB_get_metadata(self, i):  # i는 휴지통 각 파일
+        meta_json = self.RB_sidebar(i["id"], i)
+        meta_json.iconType = i["iconType"]
+        meta_json.isRetained = i["isRetained"]
+        meta_json.isRetainedUntil = i["isRetainedUntil"]
+        meta_json.isRetainedByPolicyType = i["isRetainedByPolicyType"]
+        meta_json.canDelete = i["canDelete"]
+        meta_json.canRestore = i["canRestore"]
+        meta_json.durl = "https://app.box.com/index.php?" + \
+            "rm=box_v2_download_file&" + "file_id=" + str(i["id"])
+        self.RB_Global_file_list.append(meta_json)
+
+        print("★ 휴지통 Count :", self.RB_Global_file_index)
+        self.RB_Global_file_index += 1
+
+    def RB_sidebar(self, fid, item):
+        meta = RB_Meta_data()
+        meta.count = self.RB_Global_file_index
+        temp = ""
+
+        if str(item["type"]) == "folder":
+            temp = "https://app.box.com/app-api/enduserapp/folder/"
+        else:
+            temp = "https://app.box.com/app-api/enduserapp/file/"
+
+        requestURL = temp + str(fid) + "/sidebar?format=trash"
+        responseData = requests.get(
+            url=requestURL, cookies=self.z, proxies=proxies, verify=False)
+        sidejson = json.loads(responseData.content)
+
+        for i in range(len(sidejson["items"])):
+            meta.typedID = sidejson["items"][i]["typedID"]
+            meta.type = sidejson["items"][i]["type"]
+            meta.id = sidejson["items"][i]["id"]
+            meta.description = sidejson["items"][i]["description"]
+            meta.date = sidejson["items"][i]["date"]
+            meta.extension = sidejson["items"][i]["extension"]
+            meta.name = sidejson["items"][i]["name"]
+            meta.itemSize = sidejson["items"][i]["itemSize"]
+            meta.parentFolderID = sidejson["items"][i]["parentFolderID"]
+            meta.created = sidejson["items"][i]["created"]
+            meta.contentUpdated = sidejson["items"][i]["contentUpdated"]
+            meta.deleted = sidejson["items"][i]["deleted"]
+            meta.filesCount = sidejson["items"][i]["filesCount"]
+            meta.isExternallyOwned = sidejson["items"][i]["isExternallyOwned"]
+            meta.deletedBy = sidejson["items"][i]["deletedBy"]
+            meta.deletedFromTrash = sidejson["items"][i]["deletedFromTrash"]
+            meta.lastUpdatedByName = sidejson["items"][i]["lastUpdatedByName"]
+            meta.isSelfOrAncestorCollaborated = sidejson["items"][i]["isSelfOrAncestorCollaborated"]
+            meta.versionCount = sidejson["items"][i]["versionCount"] + 1
+            meta.ownerName = sidejson["items"][i]["ownerName"]
+            meta.ownerEnterpriseName = sidejson["items"][i]["ownerEnterpriseName"]
+            meta.ownerEnterpriseID = sidejson["items"][i]["ownerEnterpriseID"]
+            meta.contentCreated = sidejson["items"][i].get("contentCreated")
+            meta.isBox3DPackageSupported = sidejson["items"][i].get(
+                "isBox3DPackageSupported")
+
+        return meta

@@ -1,12 +1,19 @@
 from playwright.sync_api import Playwright, sync_playwright
 from termcolor import colored
-import os, sys, re, requests, json, urllib3, msvcrt, time
+import os
+import sys
+import re
+import requests
+import json
+import urllib3
+import msvcrt
+import time
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 proxies = {
-    'http': 'http://127.0.0.1:8888',
-    'https': 'http://127.0.0.1:8888'
+    # 'http': 'http://127.0.0.1:8888',
+    # 'https': 'http://127.0.0.1:8888'
 }
 
 
@@ -15,6 +22,7 @@ def Authentication() -> dict:
     Box_Login_Class = Box_Account()
 
     return Box_Login_Class.Essential_Information
+
 
 def Box_Credential():
     Box_ID = input(colored("Box ID: ", 'yellow'))
@@ -65,55 +73,57 @@ def Box_Credential():
 class Box_Account:
     def __init__(self):
 
-        Box_ID, Box_PW = Box_Credential()
+        # Box_ID, Box_PW = Box_Credential()
 
         self.Essential_Information = {
-            'Box ID' : Box_ID,
-            'Box PW' : Box_PW,
-            'request_token' : "",
-            'z' : ""
+            'Box ID': "af.cloud.2021@gmail.com",
+            'Box PW': "qkrfkaghl123!@#",
+            'z': "",
+            'uid': ""
         }
 
-        self.get_Z()
-        self.get_request_token()
+        # Z값 수집
+        self.get_Cookie()
 
-    def get_Z(self):
+    def get_Cookie(self):
         with sync_playwright() as playwright:
-            browser = playwright.chromium.launch(headless=False)
+            browser = playwright.chromium.launch()  # headless=False
             context = browser.new_context()
             page = context.new_page()
             page.goto("https://account.box.com/login")
-            page.type('input[type="text"]', self.Essential_Information['Box ID'])
+            page.type('input[type="text"]',
+                      self.Essential_Information['Box ID'])
             page.click("#login-submit")
-            page.type('input[type="password"]', self.Essential_Information['Box PW'])
+            page.type('input[type="password"]',
+                      self.Essential_Information['Box PW'])
             page.click('#login-submit-password')
 
-            #if 2-factor(SMS or TOTP) 2단계 인증
-            if(page.url=="https://account.box.com/login/mfa?redirectUrl=%2Ffolder%2F0"):
-                twoCode = input("2단계 인증 코드 : ")
+            # if 2-factor(SMS or TOTP) 2단계 인증
+            if(page.url == "https://account.box.com/login/mfa?redirectUrl=%2Ffolder%2F0"):
+                twoCode = input(colored("2단계 인증 코드 : ", 'yellow'))
                 with page.expect_navigation():
                     page.type('input[type="text"]', twoCode)
-                    page.locator("//*[@id=\"app\"]/div[5]/span/div/div[1]/main/div/div/div/form/button").click()
+                    page.locator(
+                        "//*[@id=\"app\"]/div[5]/span/div/div[1]/main/div/div/div/form/button").click()
                 while(True):
                     if page.url != "https://app.box.com/folder/0":
                         time.sleep(1)
-                    else: break
-            
-            browserCookies = context.cookies()    
-            tempZ = next((item for item in browserCookies if item['name']=='z'), None)
-            self.Essential_Information['z'] = str(tempZ['value'])
+                    else:
+                        break
+
+            browserCookies = context.cookies()
+
+            for cookie in browserCookies:
+                if cookie['name'] == 'z':
+                    self.Essential_Information['z'] = str(cookie['value'])
+                if cookie['name'] == 'uid':
+                    self.Essential_Information['uid'] = str(cookie['value'])
 
             # z값을 요청에 첨부하기 쉽게 저장
-            self.z = {'z' : self.Essential_Information['z']}
+            print(colored("cookie z : ", 'yellow'),
+                  self.Essential_Information['z'])
+            print(colored("cookie uid : ", 'yellow'),
+                  self.Essential_Information['uid'])
 
             context.close()
             browser.close()
-
-    def get_request_token(self):
-        requestURL = "https://app.box.com/folder/0"
-
-        responseData = requests.get(url=requestURL, cookies=self.z, proxies=proxies, verify=False)
-        self.Essential_Information['request_token'] = re.search(',\"requestToken\":\"(.+?)\",\"billing\":{', responseData.text).group(1)
-
-        print(colored("cookie z : ", 'yellow'), self.Essential_Information['z'])
-        print(colored("request_token : ", 'yellow'), self.Essential_Information['request_token'])
