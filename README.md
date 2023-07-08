@@ -2,7 +2,7 @@
 Box Internal API Python Console Version
 
 # Playwright install
-'''python
+```python
 pip install pytest-playwright
 playwright install
-'''
+```
